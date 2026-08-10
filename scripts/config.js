@@ -9,7 +9,7 @@ export const DEFAULT_RULES = [
 export const KEYWORDS = {
   author: ['penulis', 'pengarang', 'author', 'by', 'oleh'],
   publishedYear: ['tahun terbit', 'tanggal terbit', 'terbit', 'publication date', 'published', 'published date', 'year published'],
-  pages: ['halaman', 'jumlah halaman', 'pages', 'number of pages'],
+  pages: ['halaman', 'jumlah halaman', 'pages', 'number of pages', 'ketebalan'],
   isbn: ['isbn'],
 };
 

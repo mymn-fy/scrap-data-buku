@@ -89,13 +89,6 @@ export function cleanTitle(titleValue) {
 
   cleaned = cleaned.replace(/\s+/g, ' ');
 
-  // Remove common prefixes like "Jual Buku" or "Beli Buku"
-  cleaned = cleaned.replace(/^(jual|beli)\s+buku\s+/i, '').trim();
-
-  // Remove "Karya [Author Name]" or "by [Author Name]" if present
-  // This regex is designed to be somewhat generic, stopping before other common separators.
-  cleaned = cleaned.replace(/\s+(karya|by)\s+[^|/–—]*$/i, '').trim();
-
   const separatorParts = cleaned
     .split(/\s*(?:\||\/|-|–|—)\s*/)
     .map(part => part.trim())
@@ -105,15 +98,9 @@ export function cleanTitle(titleValue) {
   const leadActionRegex = /^(jual|beli|pesan|order)\s+/i;
 
   if (separatorParts.length > 1) {
-    const preferred = separatorParts.find(part => {
-      const normalizedPart = part.replace(leadActionRegex, '');
-      return normalizedPart && !siteRegex.test(normalizedPart);
-    });
+    const preferred = separatorParts.find(part => !siteRegex.test(part) && !leadActionRegex.test(part));
     if (preferred) {
-      cleaned = preferred.replace(leadActionRegex, '');
-    } else {
-      // If no preferred part found, take the first part and clean it
-      cleaned = separatorParts[0].replace(leadActionRegex, '');
+      cleaned = preferred;
     }
   }
 

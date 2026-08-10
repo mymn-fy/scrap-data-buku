@@ -26,12 +26,13 @@ class Extractor {
         // Order of extraction matters for confidence scores
         this.extractFromSpecTable(); // New primary extraction method from specification table
         this.extractFromPageData();
+        this.extractFromGramediaDetails(); // Gramedia specific details
+        this.extractFromAnakHebatDetails(); // Anak Hebat specific details
         this.extractFromJsonLd();
         this.extractFromMeta();
         this.extractFromSemanticHtml();
         this.extractFromLabels();
         this.extractFromVisibleText();
-        this.extractFromGramediaDetails(); // New method for Gramedia specific details
 
         const totalConfidence = Object.values(this.confidence).reduce((sum, value) => sum + value, 0);
 
@@ -45,20 +46,35 @@ class Extractor {
     }
 
     setData(field, value, score) {
-        // Set data if:
-        // 1. The new score is strictly higher than the current confidence.
-        // 2. The field hasn't been set yet (confidence is 0) AND the value is not null/undefined.
-        // 3. The new score is higher or equal, and the value is explicitly null/empty,
-        //    and we want to override a lower-confidence non-empty value with an empty one.
-        //    (This is implicitly handled by `score > this.confidence[field]` for null/empty values
-        //    if the score is higher, as `value` itself can be null/empty).
-        if (score > this.confidence[field] || (this.confidence[field] === 0 && value !== null && value !== undefined && value !== '')) {
+        // Always update if the new score is strictly higher.
+        if (score > this.confidence[field]) {
             this.data[field] = value;
             this.confidence[field] = score;
-        } else if (value && this.confidence[field] > 0) { // Only increase confidence if value is not empty
-            // If value is not empty and current confidence is not 0,
-            // increase confidence if the new score is not higher but still relevant.
-            this.confidence[field] += Math.round(score / 4);
+        }
+        // If the scores are equal:
+        else if (score === this.confidence[field]) {
+            // If the current value is empty/null/undefined, but the new value is not, update.
+            // This ensures a non-empty value is preferred over an empty one at the same confidence level.
+            if ((this.data[field] === null || this.data[field] === '' || this.data[field] === undefined) &&
+                (value !== null && value !== undefined && value !== '')) {
+                this.data[field] = value;
+            }
+            // If both current and new values are non-empty and match, slightly increase confidence.
+            else if (value !== null && value !== undefined && value !== '' &&
+                     this.data[field] !== null && this.data[field] !== undefined && this.data[field] !== '' &&
+                     String(this.data[field]).toLowerCase() === String(value).toLowerCase()) {
+                this.confidence[field] = Math.min(100, this.confidence[field] + Math.round(score / 4));
+            }
+            // If the new value is empty, and the current value is not, do nothing (keep the non-empty value).
+        }
+        // If the new score is lower, only update if the current value is empty/null/undefined.
+        // This allows a lower-confidence non-empty value to fill an empty slot.
+        else if (score < this.confidence[field]) {
+            if ((this.data[field] === null || this.data[field] === '' || this.data[field] === undefined) &&
+                (value !== null && value !== undefined && value !== '')) {
+                this.data[field] = value;
+                this.confidence[field] = score;
+            }
         }
     }
 
@@ -81,7 +97,18 @@ class Extractor {
             const gramediaDetailsContainer = document.querySelector('[data-testid="productDetailSpecificationContainer"]');
             const gramediaDetailsPopulated = gramediaDetailsContainer && !gramediaDetailsContainer.querySelector('[data-sentry-component="Skeleton"]');
 
-            const hasSignal = Boolean(titleSignal || authorSignal || specificPriceValue || genericPriceSignal || gramediaDetailsPopulated);
+            // Check for Anak Hebat's main title and price
+            const anakHebatTitle = document.querySelector('#product-info h1');
+            const anakHebatPrice = document.querySelector('#product-info .price h4');
+            // Check for Anak Hebat's detail table
+            // Ensure Anak Hebat price element is present and its text content contains a number that is not just a single digit or two digits,
+            // implying it's a full price like 62,000 or 62.000.
+            const anakHebatPriceTextContent = anakHebatPrice?.textContent || '';
+            const anakHebatPriceHasFullNumber = /\d{3,}|[.,]\d{3}/.test(anakHebatPriceTextContent); // Checks for at least 3 digits, or a thousands separator
+            const anakHebatDetailTable = document.querySelector('#tab-detail table.box-table');
+
+            const hasSignal = Boolean(titleSignal || authorSignal || specificPriceValue || genericPriceSignal || gramediaDetailsPopulated ||
+                anakHebatTitle || (anakHebatPrice && anakHebatPriceHasFullNumber) || anakHebatDetailTable);
             if (hasSignal) break;
             await new Promise(resolve => setTimeout(resolve, 250));
         }
@@ -119,20 +146,20 @@ class Extractor {
         const meta = nextData?.props?.pageProps?.productDetailMeta || nextData?.props?.pageProps?.product_meta;
 
         if (meta) { // If meta object exists, try to extract from it
-            if ('title' in meta) this.setData('title', this.utils.cleanTitle(meta.title), 50); // Increased confidence
-            if ('author' in meta) this.setData('author', this.utils.cleanAuthor(meta.author, this.config.KEYWORDS.author), 50); // Increased confidence
+            if ('title' in meta) this.setData('title', this.utils.cleanTitle(meta.title), 50);
+            if ('author' in meta) this.setData('author', this.utils.cleanAuthor(meta.author, this.config.KEYWORDS.author), 50);
         }
 
-        // Fallback/additional extraction from visible elements with data-testid
-        const titleText = this.getVisibleText('[data-testid="productDetailTitle"], h1', 'title');
-        if (titleText && this.confidence.title < 50) this.setData('title', titleText, 50);
+        // Fallback/additional extraction from visible elements with data-testid and Anak Hebat specific selectors
+        const titleText = this.getVisibleText('[data-testid="productDetailTitle"], #product-info h1', 'title');
+        if (titleText && this.confidence.title < 70) this.setData('title', titleText, 70);
 
-        const authorText = this.getVisibleText('[data-testid="productDetailAuthor"]', 'author');
-        if (authorText && this.confidence.author < 20) this.setData('author', authorText, 20);
+        const authorText = this.getVisibleText('[data-testid="productDetailAuthor"], #product-info > div.inner > strong > a', 'author');
+        if (authorText && this.confidence.author < 70) this.setData('author', authorText, 70);
 
-        const priceText = this.getVisibleText('[data-testid="productDetailFinalPrice"]');
+        const priceText = this.getVisibleText('[data-testid="productDetailFinalPrice"], #product-info .price h4');
         const priceValue = this.getPriceValue(priceText);
-        if (priceValue && this.confidence.price < 20) this.setData('price', priceValue, 20);
+        if (priceValue && this.confidence.price < 70) this.setData('price', priceValue, 70);
     }
 
     extractFromJsonLd() {
@@ -144,11 +171,11 @@ class Extractor {
                 for (const item of items) {
                     const graph = item['@graph'] || [item];
                     for (const node of graph) {
-                        if (node['@type'] === 'Book' || node['@type'] === 'Product') {
-                            this.setData('title', this.utils.cleanTitle(node.name), 45);
+                        if (node['@type'] === 'Book' || node['@type'] === 'Product' || node['@type'] === 'CreativeWork') { // Added CreativeWork for broader matching
+                            this.setData('title', this.utils.cleanTitle(node.name), 45); // Confidence 45
                             if (node.author) {
                                 const authorName = Array.isArray(node.author) ? node.author.map(a => a.name).filter(Boolean).join(', ') : node.author.name;
-                                this.setData('author', this.utils.cleanAuthor(authorName, this.config.KEYWORDS.author), 40);
+                                this.setData('author', this.utils.cleanAuthor(authorName, this.config.KEYWORDS.author), 40); // Confidence 40
                             }
                             if (node.offers) {
                                 const offer = Array.isArray(node.offers) ? node.offers[0] : node.offers;
@@ -169,9 +196,9 @@ class Extractor {
     extractFromMeta() {
         const meta = (prop) => document.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`)?.content;
         const titleMeta = meta('og:title') || meta('twitter:title') || document.title;
-        const authorMeta = meta('books:author') || meta('book:author') || meta('author'); // Gramedia uses books:author
-        this.setData('title', this.utils.cleanTitle(titleMeta), 35); // Increased confidence
-        this.setData('author', this.utils.cleanAuthor(authorMeta, this.config.KEYWORDS.author), 35); // Increased confidence
+        const authorMeta = meta('books:author') || meta('book:author') || meta('author');
+        this.setData('title', this.utils.cleanTitle(titleMeta), 35);
+        this.setData('author', this.utils.cleanAuthor(authorMeta, this.config.KEYWORDS.author), 35);
         const price = this.utils.normalizePrice(meta('product:price:amount') || meta('og:price:amount') || meta('price')); // Added generic 'price'
         if (price) this.setData('price', price, 30);
     }
@@ -302,6 +329,47 @@ class Extractor {
         else if (this.config.KEYWORDS.pages.some(kw => kw in specData)) this.setData('pages', null, 85);
     }
 
+    /**
+     * Extracts data from Anak Hebat Indonesia's specific "Detail" table.
+     */
+    extractFromAnakHebatDetails() {
+        const detailTable = document.querySelector('#tab-detail table.box-table');
+        if (!detailTable) return;
+
+        const specData = {};
+        const rows = detailTable.querySelectorAll('tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 2) {
+                const label = this.utils.cleanText(cells[0].textContent).toLowerCase();
+                const value = this.utils.cleanText(cells[1].textContent);
+                specData[label] = value;
+            }
+        });
+
+        // Map extracted data to book fields with high confidence (85)
+        let authorValueFromSpec = '';
+        for (const kw of this.config.KEYWORDS.author) {
+            if (specData[kw]) {
+                authorValueFromSpec = specData[kw];
+                break;
+            }
+        }
+        if (authorValueFromSpec) {
+            this.setData('author', this.utils.cleanAuthor(authorValueFromSpec, this.config.KEYWORDS.author), 85);
+        } else if (this.config.KEYWORDS.author.some(kw => kw in specData)) {
+            this.setData('author', '', 85);
+        }
+
+        // Anak Hebat uses "Ketebalan" for pages
+        let pagesValueFromSpec = '';
+        for (const kw of this.config.KEYWORDS.pages) { // KEYWORDS.pages now includes 'ketebalan'
+            if (specData[kw]) pagesValueFromSpec = specData[kw];
+        }
+        if (pagesValueFromSpec) this.setData('pages', this.utils.extractNumber(pagesValueFromSpec), 85);
+        else if (this.config.KEYWORDS.pages.some(kw => kw in specData)) this.setData('pages', null, 85);
+    }
+
     extractFromLabels() {
         const allTextNodes = Array.from(document.querySelectorAll('p, span, div, td, li, dt, dd'));
         allTextNodes.forEach(node => {
@@ -338,12 +406,12 @@ class Extractor {
     extractFromVisibleText() {
         if (this.confidence.title < 10) {
             const titleText = this.getVisibleText('[data-testid="productDetailTitle"], h1', 'title');
-            if (titleText) this.setData('title', titleText, 10);
+            if (titleText) this.setData('title', titleText, 10); // Confidence 10
         }
 
         if (this.confidence.author < 10) {
             const authorText = this.getVisibleText('[data-testid="productDetailAuthor"]', 'author');
-            if (authorText) this.setData('author', authorText, 10);
+            if (authorText) this.setData('author', authorText, 10); // Confidence 10
         }
 
         if (this.confidence.price < 10) {
