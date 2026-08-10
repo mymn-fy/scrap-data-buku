@@ -168,7 +168,7 @@ function saveEditedData() {
     currentBookData.title = document.getElementById('edit-title').value;
     currentBookData.author = document.getElementById('edit-author').value;
     currentBookData.publicationYear = parseInt(document.getElementById('edit-publicationYear').value) || null;
-    currentBookData.price = parseInt(document.getElementById('edit-price').value) || null;
+    currentBookData.price = parseFloat(document.getElementById('edit-price').value) || null;
     currentBookData.pages = parseInt(document.getElementById('edit-pages').value) || null;
     
     if (autoRecalculateCheckbox.checked) {

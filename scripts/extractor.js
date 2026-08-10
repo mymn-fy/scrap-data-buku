@@ -127,8 +127,20 @@ class Extractor {
     getPriceValue(text) {
         if (!text) return null;
         const clean = text.replace(/\s+/g, ' ').trim();
-        if (!clean || clean.includes('...') || clean.toLowerCase().includes('skeleton')) return null;
-        return this.utils.normalizePrice(clean);
+        if (!clean || clean.includes('...') || clean.toLowerCase().includes('skeleton')) return null; // Handle loading states
+
+        // Attempt to extract a price-like string from the potentially longer text
+        // Look for patterns like "Rp.X,XXX", "Rp X.XXX", "X,XXX", "X.XXX"
+        // This regex tries to capture a number that might have thousands separators (comma or dot)
+        // and optionally a decimal part (comma or dot followed by 1-2 digits).
+        // It also looks for "Rp" prefix.
+        const priceRegex = /(?:Rp\s*\.?\s*)?(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/i;
+        const match = clean.match(priceRegex);
+
+        if (match && match[1]) {
+            return this.utils.normalizePrice(match[1]);
+        }
+        return null; // No price pattern found
     }
 
     readNextData() {
@@ -157,11 +169,23 @@ class Extractor {
         const authorText = this.getVisibleText('[data-testid="productDetailAuthor"], #product-info > div.inner > strong > a', 'author');
         if (authorText && this.confidence.author < 70) this.setData('author', authorText, 70);
 
-        const priceText = this.getVisibleText('[data-testid="productDetailFinalPrice"], #product-info .price h4');
+        // For Anak Hebat, try to get the price from the full container first, then fallback to h4
+        let priceText = null;
+        const anakHebatPriceContainer = document.querySelector('#product-info .price');
+        if (anakHebatPriceContainer) {
+            // Try to extract price from the entire container's text content
+            const priceFromContainer = this.getPriceValue(anakHebatPriceContainer.textContent);
+            if (priceFromContainer !== null) {
+                this.setData('price', priceFromContainer, 70);
+                return; // Price found, no need for further extraction in this section
+            }
+        }
+        // If price not found from container, or container not present, try specific h4 or data-testid
+        priceText = this.getVisibleText('[data-testid="productDetailFinalPrice"], #product-info .price h4');
+
         const priceValue = this.getPriceValue(priceText);
         if (priceValue && this.confidence.price < 70) this.setData('price', priceValue, 70);
     }
-
     extractFromJsonLd() {
         const scripts = document.querySelectorAll('script[type="application/ld+json"]');
         for (const script of scripts) {

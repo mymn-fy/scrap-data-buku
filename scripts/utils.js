@@ -34,45 +34,67 @@ export function normalizePrice(priceValue) {
   if (priceValue === null || priceValue === undefined) return null;
 
   if (typeof priceValue === 'number') {
-    return Number.isFinite(priceValue) ? Math.round(priceValue) : null;
+    return Number.isFinite(priceValue) ? priceValue : null; // Return as is if already a number
   }
 
-  const sanitized = String(priceValue)
-    .replace(/[^0-9,.-]/g, '')
+  let cleaned = String(priceValue)
+    .replace(/[^0-9,.]/g, '') // Remove all non-numeric characters except commas and dots
     .trim();
 
-  if (!sanitized) return null;
+  if (!cleaned) return null;
 
-  const hasComma = sanitized.includes(',');
-  const hasDot = sanitized.includes('.');
+  // Determine the decimal separator
+  const lastCommaIndex = cleaned.lastIndexOf(',');
+  const lastDotIndex = cleaned.lastIndexOf('.');
 
-  let normalized = sanitized;
-  if (hasComma && hasDot) {
-    const lastComma = sanitized.lastIndexOf(',');
-    const lastDot = sanitized.lastIndexOf('.');
-    if (lastComma > lastDot) {
-      normalized = sanitized.replace(/\./g, '').replace(/,/g, '.');
+  let thousandsSeparator = '';
+  let decimalSeparator = '';
+
+  // Case 1: Both comma and dot exist
+  if (lastCommaIndex > -1 && lastDotIndex > -1) {
+    if (lastCommaIndex > lastDotIndex) {
+      // Example: "1.234.567,89" -> comma is decimal, dot is thousands
+      decimalSeparator = ',';
+      thousandsSeparator = '.';
     } else {
-      normalized = sanitized.replace(/,/g, '');
+      // Example: "1,234,567.89" -> dot is decimal, comma is thousands
+      decimalSeparator = '.';
+      thousandsSeparator = ',';
     }
-  } else if (hasComma) {
-    const parts = sanitized.split(',');
-    if (parts.length > 1 && parts[1].length === 3) {
-      normalized = parts.join('');
+  }
+  // Case 2: Only commas exist
+  else if (lastCommaIndex > -1) {
+    // If the part after the comma has exactly 2 digits, it's likely a decimal (e.g., "62,50")
+    // Otherwise, it's likely a thousands separator (e.g., "62,000")
+    if (cleaned.substring(lastCommaIndex + 1).length === 2) {
+      decimalSeparator = ',';
     } else {
-      normalized = sanitized.replace(/,/g, '.');
+      thousandsSeparator = ',';
     }
-  } else if (hasDot) {
-    const parts = sanitized.split('.');
-    if (parts.length > 1 && parts[1].length === 3) {
-      normalized = parts.join('');
+  }
+  // Case 3: Only dots exist
+  else if (lastDotIndex > -1) {
+    // If the part after the dot has exactly 2 digits, it's likely a decimal (e.g., "62.50")
+    // Otherwise, it's likely a thousands separator (e.g., "62.000")
+    if (cleaned.substring(lastDotIndex + 1).length === 2) {
+      decimalSeparator = '.';
     } else {
-      normalized = sanitized.replace(/\./g, '');
+      thousandsSeparator = '.';
     }
   }
 
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+  // Remove thousands separators
+  if (thousandsSeparator) {
+    cleaned = cleaned.replace(new RegExp('\\' + thousandsSeparator, 'g'), '');
+  }
+
+  // Replace decimal separator with a dot for parseFloat
+  if (decimalSeparator) {
+    cleaned = cleaned.replace(decimalSeparator, '.');
+  }
+
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function normalizeYear(dateValue) {

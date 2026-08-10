@@ -4,7 +4,14 @@ import { normalizePrice, normalizeYear, cleanAuthor, extractNumber } from './uti
 
 test('utility helpers expose expected parsing functions', () => {
   assert.equal(normalizePrice('Rp 125.000'), 125000);
-  assert.equal(normalizeYear('Terbit 2021'), 2021);
-  assert.equal(cleanAuthor('Penulis: Budi', ['penulis', 'pengarang']), 'Budi');
-  assert.equal(extractNumber('Halaman 320'), 320);
+  assert.equal(normalizePrice('Rp.62,000'), 62000, 'normalizePrice with comma thousands');
+  assert.equal(normalizePrice('62,50'), 62.50, 'normalizePrice with comma decimal');
+  assert.equal(normalizePrice('62.50'), 62.50, 'normalizePrice with dot decimal');
+  assert.equal(normalizePrice('62'), 62, 'normalizePrice with integer');
+  assert.equal(normalizePrice('Rp 1.234.567,89'), 1234567.89, 'normalizePrice with mixed thousands and decimal');
+  assert.equal(normalizePrice('1234567.89'), 1234567.89, 'normalizePrice with dot decimal and no thousands');
+  assert.equal(normalizePrice('1234567,89'), 1234567.89, 'normalizePrice with comma decimal and no thousands');
+  assert.equal(normalizeYear('Terbit 2021'), 2021, 'normalizeYear extracts year');
+  assert.equal(cleanAuthor('Penulis: Budi', ['penulis', 'pengarang']), 'Budi', 'cleanAuthor cleans author text');
+  assert.equal(extractNumber('Halaman 320'), 320, 'extractNumber extracts number');
 });
