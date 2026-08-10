@@ -10,7 +10,6 @@ const resultsArea = document.getElementById('results-area');
 const resultsTable = document.getElementById('results-table');
 const copyBtn = document.getElementById('copy-btn');
 const rescanBtn = document.getElementById('rescan-btn');
-const editBtn = document.getElementById('edit-btn');
 const saveBtn = document.getElementById('save-btn');
 const autoRecalculateCheckbox = document.getElementById('auto-recalculate');
 const copyHeaderCheckbox = document.getElementById('copy-header-checkbox');
@@ -26,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     rescanBtn.addEventListener('click', runScraper);
     copyBtn.addEventListener('click', () => copyData());
-    editBtn.addEventListener('click', toggleEditMode);
+    document.getElementById('edit-btn').addEventListener('click', toggleEditMode); // Use getElementById directly
     saveBtn.addEventListener('click', saveEditedData);
 });
 
@@ -223,10 +222,8 @@ function copyData() {
 
     let textToCopy = dataArray.join(separator);
 
-    if (copyHeaderCheckbox?.checked) {
-        const headerString = headerOrder.join(separator);
-        textToCopy = `${headerString}\n${textToCopy}`;
-    }
+    const headerString = headerOrder.join(separator);
+    textToCopy = `${headerString}\n${textToCopy}`;
 
     navigator.clipboard.writeText(textToCopy).then(() => {
         setTimeout(() => {
