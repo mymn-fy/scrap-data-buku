@@ -139,7 +139,14 @@ export function cleanAuthor(authorValue, authorKeywords = []) {
 
   let cleaned = String(authorValue).trim();
   for (const keyword of authorKeywords) {
-    const regex = new RegExp(`^${keyword}\s*:?\s*`, 'i');
+    let regex;
+    if (keyword.toLowerCase() === 'by') {
+      // Specific regex for 'by' to ensure it's a standalone prefix, not part of a name like 'Byzka'
+      regex = new RegExp(`^${keyword}\\b\\s*:?\\s*`, 'i');
+    } else {
+      // General regex for other keywords
+      regex = new RegExp(`^${keyword}\\s*:?\\s*`, 'i');
+    }
     if (regex.test(cleaned)) {
       cleaned = cleaned.replace(regex, '').trim();
       break;
