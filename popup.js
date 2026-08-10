@@ -221,10 +221,8 @@ function copyData() {
     });
 
     let textToCopy = dataArray.join(separator);
-
-    const headerString = headerOrder.join(separator);
-    textToCopy = `${headerString}\n${textToCopy}`;
-
+    // Menghapus bagian ini agar header tidak ikut tersalin.
+    // Jika Anda ingin mengaktifkan kembali opsi penyalinan header, Anda bisa mengembalikan baris kode di atas.
     navigator.clipboard.writeText(textToCopy).then(() => {
         setTimeout(() => {
             copyBtn.textContent = originalText;

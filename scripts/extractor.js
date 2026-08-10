@@ -28,6 +28,7 @@ class Extractor {
         this.extractFromPageData();
         this.extractFromGramediaDetails(); // Gramedia specific details
         this.extractFromAnakHebatDetails(); // Anak Hebat specific details
+        this.extractFromMinhajPustakaShortDescription(); // Minhaj Pustaka specific details
         this.extractFromJsonLd();
         this.extractFromMeta();
         this.extractFromSemanticHtml();
@@ -392,6 +393,70 @@ class Extractor {
         }
         if (pagesValueFromSpec) this.setData('pages', this.utils.extractNumber(pagesValueFromSpec), 85);
         else if (this.config.KEYWORDS.pages.some(kw => kw in specData)) this.setData('pages', null, 85);
+    }
+
+    /**
+     * Extracts data from Minhaj Pustaka's product short description.
+     * This targets a specific <p> tag within .product-short-description that contains
+     * key-value pairs separated by <br> tags.
+     */
+    extractFromMinhajPustakaShortDescription() {
+        const shortDescriptionEl = document.querySelector('.product-short-description p');
+        if (!shortDescriptionEl) return;
+
+        // Use innerHTML to get the <br> tags for splitting lines
+        const textContent = shortDescriptionEl.innerHTML;
+        const lines = textContent.split(/<br\s*\/?>/i).map(line => line.trim()).filter(Boolean);
+
+        const specData = {};
+        lines.forEach(line => {
+            // Split only on the first colon to handle cases where the value itself contains colons
+            const parts = line.split(':');
+            if (parts.length >= 2) {
+                const label = this.utils.cleanText(parts[0]).toLowerCase();
+                // Rejoin the rest of the parts to form the complete value
+                const value = this.utils.cleanText(parts.slice(1).join(':'));
+                specData[label] = value;
+            }
+        });
+
+        // Extract Author
+        let authorValue = '';
+        // Iterate through all author keywords to find a match
+        for (const kw of this.config.KEYWORDS.author) {
+            if (specData[kw]) {
+                authorValue = specData[kw];
+                break; // Use the first found author keyword
+            }
+        }
+        if (authorValue) {
+            this.setData('author', this.utils.cleanAuthor(authorValue, this.config.KEYWORDS.author), 90);
+        } else if (this.config.KEYWORDS.author.some(kw => kw in specData)) {
+            // If an author label was present but the value was empty, set author to empty string with high confidence
+            this.setData('author', '', 90);
+        }
+
+        // Extract Publication Year
+        let yearValue = '';
+        for (const kw of this.config.KEYWORDS.publishedYear) {
+            if (specData[kw]) {
+                yearValue = specData[kw];
+                break;
+            }
+        }
+        if (yearValue) {
+            this.setData('publicationYear', this.utils.normalizeYear(yearValue), 90);
+        } else if (this.config.KEYWORDS.publishedYear.some(kw => kw in specData)) {
+            this.setData('publicationYear', null, 90);
+        }
+
+        // Extract Pages
+        let pagesValue = '';
+        for (const kw of this.config.KEYWORDS.pages) {
+            if (specData[kw]) pagesValue = specData[kw];
+        }
+        if (pagesValue) this.setData('pages', this.utils.extractNumber(pagesValue), 90);
+        else if (this.config.KEYWORDS.pages.some(kw => kw in specData)) this.setData('pages', null, 90);
     }
 
     extractFromLabels() {
