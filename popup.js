@@ -183,15 +183,15 @@ function handlePriceEdit(event) {
 }
 
 function copyData(asTsv = false) {
-    const separator = asTsv ? '\t' : ' | ';
+    const separator = '\t';
     const headerOrder = ['Judul Buku', 'Nama Penulis', 'Tahun Terbit', 'Harga Buku', 'Halaman', 'Eksemplar'];
     const dataOrder = ['title', 'author', 'publicationYear', 'price', 'pages', 'recommendedCopies'];
-    
+
     let dataArray = dataOrder.map(key => {
         if (key === 'price') {
             return `Rp${(currentBookData[key] || 0).toLocaleString('id-ID')}`;
         }
-        return currentBookData[key] || '';
+        return currentBookData[key] ?? '';
     });
 
     let textToCopy = dataArray.join(separator);
@@ -202,7 +202,6 @@ function copyData(asTsv = false) {
     }
 
     navigator.clipboard.writeText(textToCopy).then(() => {
-        const originalText = copyBtn.textContent;
         copyBtn.textContent = 'Tersalin!';
         copyTsvBtn.textContent = 'Tersalin!';
         setTimeout(() => {
@@ -218,17 +217,43 @@ function copyData(asTsv = false) {
 // --- Injected Scraper Function ---
 // This function will be serialized and executed on the web page.
 // It CANNOT access variables from the popup.js scope.
-function pageScraper() {
+async function pageScraper() {
     // This function is injected, so it needs its own logic.
     // It simulates the modular loading for the injection context.
-    
-    // --- Start of embedded utils.js ---
+
     const utils = {
         normalizePrice: (priceStr) => {
-            if (!priceStr || typeof priceStr !== 'string') return null;
-            const numStr = priceStr.replace(/[Rp|IDR|\s|\.,-]/g, '');
-            const price = parseInt(numStr.replace(/00$/, ''), 10); // Also remove trailing ,00
-            return isNaN(price) ? null : price;
+            if (priceStr === null || priceStr === undefined) return null;
+            if (typeof priceStr === 'number') return Number.isFinite(priceStr) ? Math.round(priceStr) : null;
+
+            const sanitized = String(priceStr)
+                .replace(/[^0-9,.-]/g, '')
+                .trim();
+
+            if (!sanitized) return null;
+
+            const hasComma = sanitized.includes(',');
+            const hasDot = sanitized.includes('.');
+            let normalized = sanitized;
+
+            if (hasComma && hasDot) {
+                const lastComma = sanitized.lastIndexOf(',');
+                const lastDot = sanitized.lastIndexOf('.');
+                if (lastComma > lastDot) {
+                    normalized = sanitized.replace(/\./g, '').replace(/,/g, '.');
+                } else {
+                    normalized = sanitized.replace(/,/g, '');
+                }
+            } else if (hasComma) {
+                const parts = sanitized.split(',');
+                normalized = parts.length > 1 && parts[1].length === 3 ? parts.join('') : sanitized.replace(/,/g, '.');
+            } else if (hasDot) {
+                const parts = sanitized.split('.');
+                normalized = parts.length > 1 && parts[1].length === 3 ? parts.join('') : sanitized.replace(/\./g, '');
+            }
+
+            const price = Number.parseFloat(normalized);
+            return Number.isFinite(price) ? Math.round(price) : null;
         },
         normalizeYear: (dateStr) => {
             if (!dateStr || typeof dateStr !== 'string') return null;
@@ -253,9 +278,7 @@ function pageScraper() {
             return match ? parseInt(match[0], 10) : null;
         }
     };
-    // --- End of embedded utils.js ---
 
-    // --- Start of embedded config.js ---
     const config = {
         KEYWORDS: {
             author: ['penulis', 'pengarang', 'author', 'by', 'oleh'],
@@ -263,20 +286,20 @@ function pageScraper() {
             pages: ['halaman', 'jumlah halaman', 'pages', 'number of pages'],
             isbn: ['isbn'],
         },
-        PRICE_SELECTORS: ['.price', '[class*="price"]', '[id*="price"]', '.harga', '[class*="harga"]', '[id*="harga"]', '[itemprop="price"]'],
+        PRICE_SELECTORS: ['.price', '[class*="price"]', '[id*="price"]', '.harga', '[class*="harga"]', '[id*="harga"]', '[itemprop="price"]', '[data-testid="productDetailFinalPrice"]'],
         SALE_PRICE_KEYWORDS: ['sale', 'discount', 'promo', 'offer', 'jual'],
         OLD_PRICE_KEYWORDS: ['old', 'list', 'retail', 'coret', 'normal']
     };
-    // --- End of embedded config.js ---
 
-    // --- Start of embedded extractor.js ---
     class Extractor {
         constructor() {
-            this.data = { title: "", author: "", publicationYear: null, price: null, pages: null };
+            this.data = { title: '', author: '', publicationYear: null, price: null, pages: null };
             this.confidence = { title: 0, author: 0, publicationYear: 0, price: 0, pages: 0 };
         }
 
-        extractBookData() {
+        async extractBookData() {
+            await this.waitForPageSignals();
+            this.extractFromPageData();
             this.extractFromJsonLd();
             this.extractFromMeta();
             this.extractFromSemanticHtml();
@@ -301,6 +324,57 @@ function pageScraper() {
             } else if (value && this.confidence[field] > 0) {
                 this.confidence[field] += Math.round(score / 5);
             }
+        }
+
+        async waitForPageSignals(timeoutMs = 4000) {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                const title = this.getVisibleText('[data-testid="productDetailTitle"], h1');
+                const author = this.getVisibleText('[data-testid="productDetailAuthor"]');
+                const price = this.getVisibleText('[data-testid="productDetailFinalPrice"]');
+                const hasSignal = Boolean(title || author || this.getPriceValue(price));
+                if (hasSignal) break;
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
+        }
+
+        getVisibleText(selector) {
+            const el = document.querySelector(selector);
+            return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+        }
+
+        getPriceValue(text) {
+            if (!text) return null;
+            const clean = text.replace(/\s+/g, ' ').trim();
+            if (!clean || clean.includes('...') || clean.toLowerCase().includes('skeleton')) return null;
+            return utils.normalizePrice(clean);
+        }
+
+        readNextData() {
+            const script = document.getElementById('__NEXT_DATA__');
+            if (!script?.textContent) return null;
+            try {
+                return JSON.parse(script.textContent);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        extractFromPageData() {
+            const nextData = this.readNextData();
+            const meta = nextData?.props?.pageProps?.productDetailMeta || nextData?.props?.pageProps?.product_meta;
+            if (meta?.title) this.setData('title', meta.title, 45);
+            if (meta?.author) this.setData('author', meta.author, 45);
+
+            const titleText = this.getVisibleText('[data-testid="productDetailTitle"], h1');
+            if (titleText && this.confidence.title < 20) this.setData('title', titleText, 20);
+
+            const authorText = this.getVisibleText('[data-testid="productDetailAuthor"]');
+            if (authorText && this.confidence.author < 20) this.setData('author', authorText, 20);
+
+            const priceText = this.getVisibleText('[data-testid="productDetailFinalPrice"]');
+            const priceValue = this.getPriceValue(priceText);
+            if (priceValue && this.confidence.price < 20) this.setData('price', priceValue, 20);
         }
 
         extractFromJsonLd() {
@@ -331,8 +405,10 @@ function pageScraper() {
 
         extractFromMeta() {
             const meta = (prop) => document.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`)?.content;
-            this.setData('title', meta('og:title') || meta('twitter:title'), 30);
-            this.setData('author', meta('book:author') || meta('author'), 30);
+            const titleMeta = meta('og:title') || meta('twitter:title') || document.title;
+            const authorMeta = meta('books:author') || meta('book:author') || meta('author');
+            this.setData('title', titleMeta, 30);
+            this.setData('author', authorMeta, 30);
             const price = utils.normalizePrice(meta('product:price:amount') || meta('og:price:amount'));
             if (price) this.setData('price', price, 30);
         }
@@ -360,7 +436,7 @@ function pageScraper() {
                         if (!valueText && text.includes(':')) {
                             valueText = text.split(':').slice(1).join(':').trim();
                         }
-                        
+
                         if (valueText) {
                             switch (field) {
                                 case 'author': this.setData('author', utils.cleanAuthor(valueText, config.KEYWORDS.author), 15); break;
@@ -375,13 +451,17 @@ function pageScraper() {
 
         extractFromVisibleText() {
             if (this.confidence.title < 10) {
-                const h1 = document.querySelector('h1');
-                if (h1) this.setData('title', h1.textContent.trim(), 10);
+                const titleText = this.getVisibleText('[data-testid="productDetailTitle"], h1');
+                if (titleText) this.setData('title', titleText, 10);
+            }
+            if (this.confidence.author < 10) {
+                const authorText = this.getVisibleText('[data-testid="productDetailAuthor"]');
+                if (authorText) this.setData('author', authorText, 10);
             }
             if (this.confidence.price < 10) {
                 const candidates = [];
                 document.querySelectorAll(config.PRICE_SELECTORS.join(', ')).forEach(el => {
-                    const price = utils.normalizePrice(el.textContent);
+                    const price = utils.normalizePrice(el.textContent || el.getAttribute('data-price'));
                     if (price) {
                         const isStrikethrough = window.getComputedStyle(el).textDecoration.includes('line-through') || el.closest('s, del');
                         if (!isStrikethrough) candidates.push(price);
@@ -391,11 +471,10 @@ function pageScraper() {
             }
         }
     }
-    // --- End of embedded extractor.js ---
 
     try {
         const extractor = new Extractor();
-        return extractor.extractBookData();
+        return await extractor.extractBookData();
     } catch (e) {
         return { error: e.toString() };
     }
