@@ -81,19 +81,77 @@ export function normalizeYear(dateValue) {
   return match ? Number.parseInt(match[0], 10) : null;
 }
 
+export function cleanTitle(titleValue) {
+  if (!titleValue) return '';
+
+  let cleaned = String(titleValue).trim();
+  if (!cleaned) return '';
+
+  cleaned = cleaned.replace(/\s+/g, ' ');
+
+  // Remove common prefixes like "Jual Buku" or "Beli Buku"
+  cleaned = cleaned.replace(/^(jual|beli)\s+buku\s+/i, '').trim();
+
+  // Remove "Karya [Author Name]" or "by [Author Name]" if present
+  // This regex is designed to be somewhat generic, stopping before other common separators.
+  cleaned = cleaned.replace(/\s+(karya|by)\s+[^|/–—]*$/i, '').trim();
+
+  const separatorParts = cleaned
+    .split(/\s*(?:\||\/|-|–|—)\s*/)
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  const siteRegex = /\b(toko buku online terbesar|gramedia|gramedia\.com|tokopedia|shopee|bukalapak|blibli|lazada|amazon)\b/i;
+  const leadActionRegex = /^(jual|beli|pesan|order)\s+/i;
+
+  if (separatorParts.length > 1) {
+    const preferred = separatorParts.find(part => {
+      const normalizedPart = part.replace(leadActionRegex, '');
+      return normalizedPart && !siteRegex.test(normalizedPart);
+    });
+    if (preferred) {
+      cleaned = preferred.replace(leadActionRegex, '');
+    } else {
+      // If no preferred part found, take the first part and clean it
+      cleaned = separatorParts[0].replace(leadActionRegex, '');
+    }
+  }
+
+  cleaned = cleaned.replace(leadActionRegex, '');
+  cleaned = cleaned.replace(/\b(promo|diskon|terbaru|terlaris|best seller)\b/gi, '');
+  cleaned = cleaned.replace(siteRegex, '');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  return cleaned;
+}
+
 export function cleanAuthor(authorValue, authorKeywords = []) {
   if (!authorValue) return '';
 
   let cleaned = String(authorValue).trim();
   for (const keyword of authorKeywords) {
-    const regex = new RegExp(`^${keyword}\\s*:?\\s*`, 'i');
+    const regex = new RegExp(`^${keyword}\s*:?\s*`, 'i');
     if (regex.test(cleaned)) {
       cleaned = cleaned.replace(regex, '').trim();
       break;
     }
   }
 
+  cleaned = cleaned.replace(/\s*\|\s*/g, ' ')
+    .replace(/\b(toko buku online terbesar|gramedia|gramedia\.com)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
   return cleaned;
+}
+
+export function cleanText(value) {
+  if (!value) return '';
+  return String(value)
+    .replace(/\s*\|\s*/g, ' ')
+    .replace(/\b(toko buku online terbesar|gramedia|gramedia\.com)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export function extractNumber(value) {

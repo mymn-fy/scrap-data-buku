@@ -12,15 +12,41 @@
     "default_popup": "popup.html",
     "default_icon": {
       "16": "Icons/icon16.png",
+      "24": "Icons/icon24.png",
+      "32": "Icons/icon32.png",
       "48": "Icons/icon48.png",
       "128": "Icons/icon128.png"
     }
   },
   "icons": {
     "16": "Icons/icon16.png",
+    "24": "Icons/icon24.png",
+    "32": "Icons/icon32.png",
     "48": "Icons/icon48.png",
     "128": "Icons/icon128.png"
   },
+  "theme_icons": [
+    {
+      "light": "Icons/icon16.png",
+      "dark": "Icons/icon16-dark.png",
+      "size": 16
+    },
+    {
+      "light": "Icons/icon32.png",
+      "dark": "Icons/icon32-dark.png",
+      "size": 32
+    },
+    {
+      "light": "Icons/icon48.png",
+      "dark": "Icons/icon48-dark.png",
+      "size": 48
+    },
+    {
+      "light": "Icons/icon128.png",
+      "dark": "Icons/icon128-dark.png",
+      "size": 128
+    }
+  ],
   "background": {
     "service_worker": "scripts/storage.js",
     "type": "module"

@@ -8,11 +8,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h3>BOOK SCRAPER</h3>
-            <a href="settings.html" target="_blank" class="settings-link" title="Pengaturan">⚙️</a>
+            <div class="brand">
+                <span class="brand-mark">✦</span>
+                <h3>Book Scraper</h3>
+            </div>
+            <a href="settings.html" target="_blank" class="settings-link" title="Pengaturan">⚙</a>
         </div>
 
-        <div id="status-area">
+        <div id="status-area" class="panel">
             <p id="status-text">Mendeteksi data buku...</p>
             <div id="confidence-bar-container">
                 <div id="confidence-bar"></div>
@@ -20,26 +23,22 @@
             <p id="confidence-text"></p>
         </div>
 
-        <div id="results-area" class="hidden">
+        <div id="results-area" class="panel hidden">
             <table id="results-table">
                 <!-- Data rows will be injected by JS -->
             </table>
             <div class="edit-controls hidden">
-                 <label><input type="checkbox" id="auto-recalculate" checked> Hitung eksemplar otomatis</label>
+                <label><input type="checkbox" id="auto-recalculate" checked> Hitung eksemplar otomatis</label>
             </div>
             <div class="button-group">
-                <button id="copy-btn">Salin Data</button>
-                <button id="copy-tsv-btn">Salin sebagai TSV</button>
-            </div>
-             <div class="button-group">
                 <button id="edit-btn">Edit Data</button>
+                <button id="copy-btn">Salin Data</button>
+            </div>
+            <div class="button-group">
                 <button id="save-btn" class="hidden">Simpan</button>
             </div>
-            <div class="button-group">
-                <label><input type="checkbox" id="copy-header-checkbox"> Salin dengan Header</label>
-            </div>
         </div>
-        
+
         <div class="footer">
             <button id="rescan-btn">Ekstraksi Ulang</button>
         </div>
