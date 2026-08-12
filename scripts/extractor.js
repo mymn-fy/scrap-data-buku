@@ -43,6 +43,13 @@ class Extractor {
 
         const totalConfidence = Object.values(this.confidence).reduce((sum, value) => sum + value, 0);
 
+        console.log('[Book Scraper debug]', {
+            price: this.data.price,
+            originalPrice: this.data.originalPrice,
+            discountPrice: this.data.discountPrice,
+            confidence: this.confidence,
+        });
+
         return {
             ...this.data,
             confidence: Math.min(100, totalConfidence),
@@ -537,15 +544,17 @@ class Extractor {
     }
 
     extractPriceVariants() {
+        const MIN_PLAUSIBLE_PRICE = 1000; // Harga buku realistis biasanya di atas ini
+
         document.querySelectorAll(this.config.PRICE_SELECTORS.join(', ')).forEach(el => {
             const price = this.getPriceValue(el.textContent || el.getAttribute('data-price'));
-            if (!price) return;
+            if (!price || price < MIN_PLAUSIBLE_PRICE) return;
 
             const style = window.getComputedStyle(el);
             const isStruck = style.textDecorationLine?.includes('line-through')
                 || el.closest('del, s, strike') !== null;
 
-            const marker = `${el.className} ${el.id}`.toLowerCase();
+            const marker = `${el.className} ${el.id} ${el.getAttribute('data-testid') || ''}`.toLowerCase();
             const looksOld = this.config.OLD_PRICE_KEYWORDS.some(kw => marker.includes(kw));
             const looksSale = this.config.SALE_PRICE_KEYWORDS.some(kw => marker.includes(kw));
 
@@ -560,17 +569,25 @@ class Extractor {
 
         document.querySelectorAll('del, s, strike').forEach(el => {
             const price = this.getPriceValue(el.textContent);
-            if (price) this.setPriceVariant('originalPrice', price, 25);
+            if (price && price >= 1000) this.setPriceVariant('originalPrice', price, 25);
         });
     }
 
     finalizePriceVariants() {
-        if (this.data.discountPrice === null) this.data.discountPrice = this.data.price;
-        if (this.data.originalPrice !== null && this.data.discountPrice !== null
-            && this.data.originalPrice <= this.data.discountPrice) {
-            this.data.originalPrice = null;
+        if (this.data.discountPrice === null || this.confidence.discountPrice < this.confidence.price) {
+            this.data.discountPrice = this.data.price;
         }
         if (this.data.originalPrice === null) this.data.originalPrice = this.data.price;
+
+        // Cerdas: apapun sumbernya, angka yang lebih besar dianggap harga awal,
+        // dan angka yang lebih kecil dianggap harga diskon.
+        if (this.data.originalPrice !== null && this.data.discountPrice !== null
+            && this.data.originalPrice !== this.data.discountPrice) {
+            const higher = Math.max(this.data.originalPrice, this.data.discountPrice);
+            const lower = Math.min(this.data.originalPrice, this.data.discountPrice);
+            this.data.originalPrice = higher;
+            this.data.discountPrice = lower;
+        }
     }
 }
 

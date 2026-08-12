@@ -12,7 +12,7 @@ const copyBtn = document.getElementById('copy-btn');
 const rescanBtn = document.getElementById('rescan-btn');
 const editBtn = document.getElementById('edit-btn');
 const priceModeRow = document.getElementById('price-mode-row');
-const useOriginalPriceCheckbox = document.getElementById('use-original-price');
+const useDiscountPriceCheckbox = document.getElementById('use-discount-price');
 const autoRecalculateCheckbox = document.getElementById('auto-recalculate');
 
 const DRAFT_KEY = 'bookScraperDraft';
@@ -28,9 +28,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     copyRules = await getCopyRules();
 
     const draft = await loadDraft();
-    if (draft) {
+    if (draft && draft.bookData && 'originalPrice' in draft.bookData) {
         restoreDraft(draft);
     } else {
+        if (draft) await clearDraft();
         runScraper();
     }
 
@@ -40,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     copyBtn.addEventListener('click', () => copyData());
     editBtn.addEventListener('click', handleEditButtonClick);
-    useOriginalPriceCheckbox.addEventListener('change', () => {
+    useDiscountPriceCheckbox.addEventListener('change', () => {
         if (!currentBookData) return;
         currentBookData.price = resolvePrice(currentBookData);
         currentBookData.recommendedCopies = calculateCopies(currentBookData.price, copyRules);
@@ -53,15 +54,8 @@ async function runScraper() {
     showLoadingState();
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // Inject and execute the scraper function
     try {
-        // Inject all necessary module files first into the isolated world
-        await chrome.scripting.executeScript({
-            target: { tabId: tab.id }, // Target the current active tab
-            files: ['scripts/utils.js', 'scripts/config.js', 'scripts/extractor.js'],
-        });
-
-        // Now, execute a function that dynamically imports and calls the exported scraping function
+        // Muat modul secara dinamis dan jalankan fungsi ekstraksi
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: async () => {
@@ -93,8 +87,8 @@ function processScrapedData(data) {
     currentBookData.price = resolvePrice(currentBookData);
     currentBookData.recommendedCopies = calculateCopies(currentBookData.price, copyRules);
 
-    const hasBothPrices = data.originalPrice != null && data.discountPrice != null
-        && data.originalPrice !== data.discountPrice;
+    const hasBothPrices = currentBookData.originalPrice != null && currentBookData.discountPrice != null
+        && currentBookData.originalPrice !== currentBookData.discountPrice;
     priceModeRow.classList.toggle('hidden', !hasBothPrices);
 
     updateUI(currentBookData);
@@ -102,10 +96,10 @@ function processScrapedData(data) {
 }
 
 function resolvePrice(data) {
-    const useOriginal = useOriginalPriceCheckbox.checked;
-    if (useOriginal && data.originalPrice != null) return data.originalPrice;
-    if (data.discountPrice != null) return data.discountPrice;
-    return data.originalPrice ?? data.price ?? null;
+    const useDiscount = useDiscountPriceCheckbox.checked;
+    if (useDiscount && data.discountPrice != null) return data.discountPrice;
+    if (data.originalPrice != null) return data.originalPrice;
+    return data.discountPrice ?? data.price ?? null;
 }
 
 // --- UI Update Functions ---
@@ -262,6 +256,7 @@ async function saveSnapshot() {
         isEditMode,
         values: isEditMode ? collectDraftValues() : null,
         autoRecalculate: autoRecalculateCheckbox.checked,
+        useDiscount: useDiscountPriceCheckbox.checked,
     };
     await chrome.storage.local.set({ [DRAFT_KEY]: snapshot });
 }
@@ -278,6 +273,13 @@ async function clearDraft() {
 function restoreDraft(draft) {
     currentBookData = draft.bookData;
     autoRecalculateCheckbox.checked = draft.autoRecalculate;
+    useDiscountPriceCheckbox.checked = draft.useDiscount ?? false;
+
+    const hasBothPrices = currentBookData.originalPrice != null && currentBookData.discountPrice != null
+        && currentBookData.originalPrice !== currentBookData.discountPrice;
+    priceModeRow.classList.toggle('hidden', !hasBothPrices);
+
+    currentBookData.price = resolvePrice(currentBookData);
 
     statusText.textContent = '✓ Buku terdeteksi! (melanjutkan editan sebelumnya)';
     resultsArea.classList.remove('hidden');

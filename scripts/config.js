@@ -17,7 +17,8 @@ export const KEYWORDS = {
 export const PRICE_SELECTORS = [
   '.price', '[class*="price"]', '[id*="price"]',
   '.harga', '[class*="harga"]', '[id*="harga"]',
-  '[itemprop="price"]'
+  '[itemprop="price"]',
+  '[data-testid*="Price"]', '[data-testid*="price"]',
 ];
 
 // Words indicating a sale price (priority)
