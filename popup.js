@@ -10,23 +10,43 @@ const resultsArea = document.getElementById('results-area');
 const resultsTable = document.getElementById('results-table');
 const copyBtn = document.getElementById('copy-btn');
 const rescanBtn = document.getElementById('rescan-btn');
-const saveBtn = document.getElementById('save-btn');
+const editBtn = document.getElementById('edit-btn');
+const priceModeRow = document.getElementById('price-mode-row');
+const useOriginalPriceCheckbox = document.getElementById('use-original-price');
 const autoRecalculateCheckbox = document.getElementById('auto-recalculate');
-const copyHeaderCheckbox = document.getElementById('copy-header-checkbox');
+
+const DRAFT_KEY = 'bookScraperDraft';
+let saveDraftTimeout = null;
 
 let currentBookData = null;
 let copyRules = [];
+let isEditMode = false;
 
 // --- Main Logic ---
 
 document.addEventListener('DOMContentLoaded', async () => {
     copyRules = await getCopyRules();
-    runScraper();
 
-    rescanBtn.addEventListener('click', runScraper);
+    const draft = await loadDraft();
+    if (draft) {
+        restoreDraft(draft);
+    } else {
+        runScraper();
+    }
+
+    rescanBtn.addEventListener('click', async () => {
+        await clearDraft();
+        runScraper();
+    });
     copyBtn.addEventListener('click', () => copyData());
-    document.getElementById('edit-btn').addEventListener('click', toggleEditMode); // Use getElementById directly
-    saveBtn.addEventListener('click', saveEditedData);
+    editBtn.addEventListener('click', handleEditButtonClick);
+    useOriginalPriceCheckbox.addEventListener('change', () => {
+        if (!currentBookData) return;
+        currentBookData.price = resolvePrice(currentBookData);
+        currentBookData.recommendedCopies = calculateCopies(currentBookData.price, copyRules);
+        renderTable(currentBookData, isEditMode);
+        saveSnapshot();
+    });
 });
 
 async function runScraper() {
@@ -70,10 +90,22 @@ function processScrapedData(data) {
     }
 
     currentBookData = data;
-    // Calculate recommended copies
+    currentBookData.price = resolvePrice(currentBookData);
     currentBookData.recommendedCopies = calculateCopies(currentBookData.price, copyRules);
-    
+
+    const hasBothPrices = data.originalPrice != null && data.discountPrice != null
+        && data.originalPrice !== data.discountPrice;
+    priceModeRow.classList.toggle('hidden', !hasBothPrices);
+
     updateUI(currentBookData);
+    saveSnapshot();
+}
+
+function resolvePrice(data) {
+    const useOriginal = useOriginalPriceCheckbox.checked;
+    if (useOriginal && data.originalPrice != null) return data.originalPrice;
+    if (data.discountPrice != null) return data.discountPrice;
+    return data.originalPrice ?? data.price ?? null;
 }
 
 // --- UI Update Functions ---
@@ -83,6 +115,10 @@ function showLoadingState() {
     resultsArea.classList.add('hidden');
     confidenceBar.style.width = '0%';
     confidenceText.textContent = '';
+    editBtn.textContent = 'Edit Data';
+    editBtn.classList.remove('save-mode');
+    document.querySelector('.edit-controls').classList.add('hidden');
+    isEditMode = false;
 }
 
 function showError(message) {
@@ -156,21 +192,31 @@ function renderTable(data, isEditMode = false) {
 
 // --- Interaction Handlers ---
 
-function toggleEditMode() {
+function handleEditButtonClick() {
+    if (!isEditMode) {
+        enterEditMode();
+    } else {
+        saveEditedData();
+    }
+}
+
+function enterEditMode() {
     renderTable(currentBookData, true);
-    editBtn.classList.add('hidden');
-    saveBtn.classList.remove('hidden');
+    editBtn.textContent = 'Simpan';
+    editBtn.classList.add('save-mode');
     document.querySelector('.edit-controls').classList.remove('hidden');
+    isEditMode = true;
+    attachDraftListeners();
+    saveSnapshot();
 }
 
 function saveEditedData() {
-    // Update currentBookData from input fields
     currentBookData.title = document.getElementById('edit-title').value;
     currentBookData.author = document.getElementById('edit-author').value;
     currentBookData.publicationYear = parseInt(document.getElementById('edit-publicationYear').value) || null;
     currentBookData.price = parseFloat(document.getElementById('edit-price').value) || null;
     currentBookData.pages = parseInt(document.getElementById('edit-pages').value) || null;
-    
+
     if (autoRecalculateCheckbox.checked) {
         currentBookData.recommendedCopies = calculateCopies(currentBookData.price, copyRules);
     } else {
@@ -178,9 +224,83 @@ function saveEditedData() {
     }
 
     renderTable(currentBookData, false);
-    editBtn.classList.remove('hidden');
-    saveBtn.classList.add('hidden');
+    editBtn.textContent = 'Edit Data';
+    editBtn.classList.remove('save-mode');
     document.querySelector('.edit-controls').classList.add('hidden');
+    isEditMode = false;
+    saveSnapshot();
+}
+
+// --- Persistensi draf ke chrome.storage ---
+
+function collectDraftValues() {
+    return {
+        title: document.getElementById('edit-title')?.value ?? '',
+        author: document.getElementById('edit-author')?.value ?? '',
+        publicationYear: document.getElementById('edit-publicationYear')?.value ?? '',
+        price: document.getElementById('edit-price')?.value ?? '',
+        pages: document.getElementById('edit-pages')?.value ?? '',
+        recommendedCopies: document.getElementById('edit-recommendedCopies')?.value ?? '',
+    };
+}
+
+function attachDraftListeners() {
+    resultsTable.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', scheduleDraftSave);
+    });
+}
+
+function scheduleDraftSave() {
+    clearTimeout(saveDraftTimeout);
+    saveDraftTimeout = setTimeout(saveSnapshot, 300);
+}
+
+async function saveSnapshot() {
+    if (!currentBookData) return;
+    const snapshot = {
+        bookData: currentBookData,
+        isEditMode,
+        values: isEditMode ? collectDraftValues() : null,
+        autoRecalculate: autoRecalculateCheckbox.checked,
+    };
+    await chrome.storage.local.set({ [DRAFT_KEY]: snapshot });
+}
+
+async function loadDraft() {
+    const stored = await chrome.storage.local.get(DRAFT_KEY);
+    return stored[DRAFT_KEY] || null;
+}
+
+async function clearDraft() {
+    await chrome.storage.local.remove(DRAFT_KEY);
+}
+
+function restoreDraft(draft) {
+    currentBookData = draft.bookData;
+    autoRecalculateCheckbox.checked = draft.autoRecalculate;
+
+    statusText.textContent = '✓ Buku terdeteksi! (melanjutkan editan sebelumnya)';
+    resultsArea.classList.remove('hidden');
+    confidenceBar.style.width = `${currentBookData.confidence || 0}%`;
+    confidenceText.textContent = '';
+
+    if (draft.isEditMode) {
+        renderTable(currentBookData, true);
+        document.getElementById('edit-title').value = draft.values.title;
+        document.getElementById('edit-author').value = draft.values.author;
+        document.getElementById('edit-publicationYear').value = draft.values.publicationYear;
+        document.getElementById('edit-price').value = draft.values.price;
+        document.getElementById('edit-pages').value = draft.values.pages;
+        document.getElementById('edit-recommendedCopies').value = draft.values.recommendedCopies;
+
+        editBtn.textContent = 'Simpan';
+        editBtn.classList.add('save-mode');
+        document.querySelector('.edit-controls').classList.remove('hidden');
+        isEditMode = true;
+        attachDraftListeners();
+    } else {
+        renderTable(currentBookData, false);
+    }
 }
 
 function handlePriceEdit(event) {

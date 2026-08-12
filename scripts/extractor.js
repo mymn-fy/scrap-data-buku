@@ -11,6 +11,8 @@ class Extractor {
             publicationYear: null,
             price: null,
             pages: null, // Number of pages
+            originalPrice: null,
+            discountPrice: null,
         };
         this.confidence = {
             title: 0, // Initialize confidence for title
@@ -18,6 +20,8 @@ class Extractor {
             publicationYear: 0,
             price: 0,
             pages: 0, // Confidence for pages
+            originalPrice: 0,
+            discountPrice: 0,
         };
     }
 
@@ -34,6 +38,8 @@ class Extractor {
         this.extractFromSemanticHtml();
         this.extractFromLabels();
         this.extractFromVisibleText();
+        this.extractPriceVariants();
+        this.finalizePriceVariants();
 
         const totalConfidence = Object.values(this.confidence).reduce((sum, value) => sum + value, 0);
 
@@ -519,6 +525,52 @@ class Extractor {
                 this.setData('price', Math.min(...priceCandidates), 10);
             }
         }
+    }
+
+    setPriceVariant(field, value, score) {
+        if (score > this.confidence[field]) {
+            this.data[field] = value;
+            this.confidence[field] = score;
+        } else if (score === this.confidence[field] && this.data[field] === null && value !== null) {
+            this.data[field] = value;
+        }
+    }
+
+    extractPriceVariants() {
+        document.querySelectorAll(this.config.PRICE_SELECTORS.join(', ')).forEach(el => {
+            const price = this.getPriceValue(el.textContent || el.getAttribute('data-price'));
+            if (!price) return;
+
+            const style = window.getComputedStyle(el);
+            const isStruck = style.textDecorationLine?.includes('line-through')
+                || el.closest('del, s, strike') !== null;
+
+            const marker = `${el.className} ${el.id}`.toLowerCase();
+            const looksOld = this.config.OLD_PRICE_KEYWORDS.some(kw => marker.includes(kw));
+            const looksSale = this.config.SALE_PRICE_KEYWORDS.some(kw => marker.includes(kw));
+
+            if (isStruck || looksOld) {
+                this.setPriceVariant('originalPrice', price, isStruck ? 30 : 20);
+            } else if (looksSale) {
+                this.setPriceVariant('discountPrice', price, 30);
+            } else {
+                this.setPriceVariant('discountPrice', price, 12);
+            }
+        });
+
+        document.querySelectorAll('del, s, strike').forEach(el => {
+            const price = this.getPriceValue(el.textContent);
+            if (price) this.setPriceVariant('originalPrice', price, 25);
+        });
+    }
+
+    finalizePriceVariants() {
+        if (this.data.discountPrice === null) this.data.discountPrice = this.data.price;
+        if (this.data.originalPrice !== null && this.data.discountPrice !== null
+            && this.data.originalPrice <= this.data.discountPrice) {
+            this.data.originalPrice = null;
+        }
+        if (this.data.originalPrice === null) this.data.originalPrice = this.data.price;
     }
 }
 

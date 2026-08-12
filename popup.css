@@ -151,6 +151,12 @@ body {
   color: var(--muted);
 }
 
+.price-mode-row {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .button-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -190,6 +196,12 @@ button#copy-btn,
 
 button#edit-btn {
   background: #fafaf7;
+}
+
+button#edit-btn.save-mode {
+  background: #ad1236;
+  color: #fff;
+  border-color: #ad1236;
 }
 
 .footer {
