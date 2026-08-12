@@ -1,6 +1,6 @@
 # Book Scraper & Smart Copy Calculator
 
-![Extension Icon](Icons/icon128.png)
+![Extension Icon](Icons/icon128-dark.png)
 
 Ekstensi Chrome ini dirancang untuk membantu pengguna mengekstrak data buku dari halaman produk e-commerce tertentu dan menghitung jumlah eksemplar yang direkomendasikan berdasarkan aturan harga yang dapat dikonfigurasi. Data yang diekstrak dapat dengan mudah disalin ke clipboard untuk analisis lebih lanjut.
 
