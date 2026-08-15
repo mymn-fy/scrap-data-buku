@@ -8,7 +8,7 @@ export const DEFAULT_RULES = [
 // Keywords for data extraction (Indonesian & English)
 export const KEYWORDS = {
   author: ['penulis', 'pengarang', 'author', 'by', 'oleh'],
-  publishedYear: ['tahun terbit', 'tanggal terbit', 'terbit', 'publication date', 'published', 'published date', 'year published'],
+  publishedYear: ['tahun terbit', 'tahun', 'year', 'tanggal terbit', 'terbit', 'publication date', 'published', 'published date', 'year published'],
   pages: ['halaman', 'jumlah halaman', 'pages', 'number of pages', 'ketebalan'],
   isbn: ['isbn'],
 };
