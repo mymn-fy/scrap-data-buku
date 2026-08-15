@@ -64,7 +64,13 @@
       "resources": [
         "scripts/extractor.js",
         "scripts/utils.js",
-        "scripts/config.js"
+        "scripts/config.js",
+        "scripts/extractors/base.js",
+        "scripts/extractors/generic.js",
+        "scripts/extractors/gramedia.js",
+        "scripts/extractors/anak-hebat.js",
+        "scripts/extractors/minhaj-pustaka.js",
+        "scripts/extractors/registry.js"
       ],
       "matches": ["<all_urls>"]
     }
