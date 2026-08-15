@@ -52,14 +52,28 @@ export function normalizePrice(priceValue) {
 
   // Case 1: Both comma and dot exist
   if (lastCommaIndex > -1 && lastDotIndex > -1) {
-    if (lastCommaIndex > lastDotIndex) {
-      // Example: "1.234.567,89" -> comma is decimal, dot is thousands
-      decimalSeparator = ',';
-      thousandsSeparator = '.';
-    } else {
-      // Example: "1,234,567.89" -> dot is decimal, comma is thousands
-      decimalSeparator = '.';
+    // Inspect lengths after the last separators to better guess roles.
+    const afterCommaLen = cleaned.length - lastCommaIndex - 1;
+    const afterDotLen = cleaned.length - lastDotIndex - 1;
+
+    // Heuristic: if the last separator is followed by exactly 3 digits,
+    // it's more likely a thousands separator than a decimal separator.
+    if (afterCommaLen === 3 && afterDotLen !== 2) {
       thousandsSeparator = ',';
+      // If dot is followed by 2 digits, treat as decimal, otherwise remove dot as stray thousands/currency separator
+      decimalSeparator = afterDotLen === 2 ? '.' : '';
+    } else if (afterDotLen === 3 && afterCommaLen !== 2) {
+      thousandsSeparator = '.';
+      decimalSeparator = afterCommaLen === 2 ? ',' : '';
+    } else {
+      // Fallback to previous logic comparing positions
+      if (lastCommaIndex > lastDotIndex) {
+        decimalSeparator = ',';
+        thousandsSeparator = '.';
+      } else {
+        decimalSeparator = '.';
+        thousandsSeparator = ',';
+      }
     }
   }
   // Case 2: Only commas exist
@@ -89,7 +103,10 @@ export function normalizePrice(priceValue) {
   }
 
   // Replace decimal separator with a dot for parseFloat
-  if (decimalSeparator) {
+  // If no decimal separator was determined, remove stray dots (e.g. "Rp.62,000" -> ".62,000" -> "62000")
+  if (!decimalSeparator) {
+    cleaned = cleaned.replace(/\./g, '');
+  } else {
     cleaned = cleaned.replace(decimalSeparator, '.');
   }
 

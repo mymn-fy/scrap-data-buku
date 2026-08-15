@@ -74,30 +74,67 @@ export class GenericExtractor extends BaseExtractor {
     }
 
     extractFromLabels() {
-        const allTextNodes = Array.from(document.querySelectorAll('p, span, div, td, li, dt, dd'));
+        const allTextNodes = Array.from(document.querySelectorAll('p, span, div, td, li, dt, dd, label'));
         allTextNodes.forEach(node => {
-            const text = node.textContent.trim().toLowerCase();
+            const nodeTextContent = node.textContent.trim(); // Keep original case for colon check
+            const text = nodeTextContent.toLowerCase(); // For keyword matching
             if (text.length > 25 || text.length < 3) return;
 
             Object.keys(this.config.KEYWORDS).forEach(field => {
-                if (this.config.KEYWORDS[field].some(kw => text.startsWith(kw))) {
-                    let valueNode = node.nextElementSibling || node.parentElement.nextElementSibling;
-                    let valueText = valueNode ? valueNode.textContent.trim() : '';
+                const keywordsForField = this.config.KEYWORDS[field];
+                let matchedKeyword = null;
 
-                    if (!valueText && text.includes(':')) {
-                        valueText = text.split(':').slice(1).join(':').trim();
+                // Determine if the node's text matches any keyword for the current field
+                // Be more strict for non-LABEL elements by requiring a colon
+                if (node.tagName === 'LABEL') {
+                    matchedKeyword = keywordsForField.find(kw => text.startsWith(kw));
+                } else {
+                    // For other elements, require the keyword to be followed by a colon
+                    // This prevents matching "penulis" in "Daftar Isi Penulis" if it's not a label
+                    matchedKeyword = keywordsForField.find(kw => nodeTextContent.includes(kw + ':'));
+                }
+
+                if (matchedKeyword) {
+                    let valueText = '';
+                    let confidenceScore = 15; // Default low confidence
+
+                    // Scenario 1: Node is a <label> and its next sibling is the value element
+                    // This is the most reliable pattern for the user's HTML
+                    if (node.tagName === 'LABEL' && node.nextElementSibling) {
+                        const nextEl = node.nextElementSibling;
+                        // Check if the next element is a common container for values
+                        if (['A', 'SPAN', 'STRONG', 'P', 'DIV', 'TD', 'LI', 'DD'].includes(nextEl.tagName)) {
+                            valueText = nextEl.textContent.trim();
+                            confidenceScore = 65; // Very high confidence
+                        }
                     }
 
+                    // Scenario 2: Keyword and value are in the same text node, separated by a colon
+                    // This handles cases like "Penulis: John Doe" within a single <div> or <p>
+                    if (!valueText && nodeTextContent.includes(matchedKeyword + ':')) {
+                        valueText = nodeTextContent.split(matchedKeyword + ':').slice(1).join(':').trim();
+                        confidenceScore = Math.max(confidenceScore, 40); // Medium confidence
+                    }
+
+                    // Only proceed if a valueText was successfully extracted by the specific scenarios above
                     if (valueText) {
                         switch (field) {
                             case 'author':
-                                this.setData('author', this.utils.cleanAuthor(valueText, this.config.KEYWORDS.author), 15);
+                                console.log(`[Book Scraper Debug] extractFromLabels - Field: ${field}, Node Tag: ${node.tagName}, Node Text: "${nodeTextContent}", Matched Keyword: "${matchedKeyword}", Extracted Value: "${valueText}", Confidence: ${confidenceScore}`);
+                                this.setData('author', this.utils.cleanAuthor(valueText, this.config.KEYWORDS.author), confidenceScore);
                                 break;
                             case 'publishedYear':
-                                this.setData('publicationYear', this.utils.normalizeYear(valueText), 15);
+                                this.setData('publicationYear', this.utils.normalizeYear(valueText), confidenceScore);
+                                const pagesMatch = valueText.match(/(\d+)\s*(halaman|pages)/i);
+                                if (pagesMatch && pagesMatch[1]) {
+                                    this.setData('pages', parseInt(pagesMatch[1], 10), confidenceScore);
+                                }
                                 break;
                             case 'pages':
-                                this.setData('pages', this.utils.extractNumber(valueText), 15);
+                                this.setData('pages', this.utils.extractNumber(valueText), confidenceScore);
+                                break;
+                            case 'isbn':
+                                this.setData('isbn', valueText, confidenceScore);
                                 break;
                         }
                     }
@@ -121,7 +158,7 @@ export class GenericExtractor extends BaseExtractor {
             const priceCandidates = [];
             document.querySelectorAll(this.config.PRICE_SELECTORS.join(', ')).forEach(el => {
                 const priceText = el.textContent || el.getAttribute('data-price');
-                const price = this.utils.normalizePrice(priceText);
+                const price = this.getPriceValue(priceText);
                 if (price) {
                     const isStrikethrough = window.getComputedStyle(el).textDecoration.includes('line-through');
                     if (!isStrikethrough) {
