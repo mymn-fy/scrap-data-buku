@@ -70,6 +70,7 @@
         "scripts/extractors/gramedia.js",
         "scripts/extractors/anak-hebat.js",
         "scripts/extractors/minhaj-pustaka.js",
+        "scripts/extractors/deepublish.js",
         "scripts/extractors/registry.js"
       ],
       "matches": ["<all_urls>"]

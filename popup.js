@@ -56,14 +56,19 @@ async function runScraper() {
 
     try {
         // Muat modul secara dinamis dan jalankan fungsi ekstraksi
+        const utilsUrl = chrome.runtime.getURL('scripts/utils.js');
+        const configUrl = chrome.runtime.getURL('scripts/config.js');
+        const extractorUrl = chrome.runtime.getURL('scripts/extractor.js');
+
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            func: async () => {
-                const utilsModule = await import(chrome.runtime.getURL('scripts/utils.js'));
-                const configModule = await import(chrome.runtime.getURL('scripts/config.js'));
-                const extractorModule = await import(chrome.runtime.getURL('scripts/extractor.js'));
+            func: async (utilsUrlArg, configUrlArg, extractorUrlArg) => {
+                const utilsModule = await import(utilsUrlArg);
+                const configModule = await import(configUrlArg);
+                const extractorModule = await import(extractorUrlArg);
                 return await extractorModule.performScraping(utilsModule, configModule);
             },
+            args: [utilsUrl, configUrl, extractorUrl],
         });
         
         if (results && results[0] && results[0].result) {
