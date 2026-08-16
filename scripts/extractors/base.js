@@ -16,6 +16,8 @@ export class BaseExtractor {
             pages: null,
             originalPrice: null,
             discountPrice: null,
+            isbn: '',
+            publisher: '',
         };
         this.confidence = {
             title: 0,
@@ -25,6 +27,8 @@ export class BaseExtractor {
             pages: 0,
             originalPrice: 0,
             discountPrice: 0,
+            isbn: 0,
+            publisher: 0,
         };
     }
 
