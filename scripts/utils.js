@@ -52,28 +52,14 @@ export function normalizePrice(priceValue) {
 
   // Case 1: Both comma and dot exist
   if (lastCommaIndex > -1 && lastDotIndex > -1) {
-    // Inspect lengths after the last separators to better guess roles.
-    const afterCommaLen = cleaned.length - lastCommaIndex - 1;
-    const afterDotLen = cleaned.length - lastDotIndex - 1;
-
-    // Heuristic: if the last separator is followed by exactly 3 digits,
-    // it's more likely a thousands separator than a decimal separator.
-    if (afterCommaLen === 3 && afterDotLen !== 2) {
-      thousandsSeparator = ',';
-      // If dot is followed by 2 digits, treat as decimal, otherwise remove dot as stray thousands/currency separator
-      decimalSeparator = afterDotLen === 2 ? '.' : '';
-    } else if (afterDotLen === 3 && afterCommaLen !== 2) {
+    if (lastCommaIndex > lastDotIndex) {
+      // Example: "1.234.567,89" -> comma is decimal, dot is thousands
+      decimalSeparator = ',';
       thousandsSeparator = '.';
-      decimalSeparator = afterCommaLen === 2 ? ',' : '';
     } else {
-      // Fallback to previous logic comparing positions
-      if (lastCommaIndex > lastDotIndex) {
-        decimalSeparator = ',';
-        thousandsSeparator = '.';
-      } else {
-        decimalSeparator = '.';
-        thousandsSeparator = ',';
-      }
+      // Example: "1,234,567.89" -> dot is decimal, comma is thousands
+      decimalSeparator = '.';
+      thousandsSeparator = ',';
     }
   }
   // Case 2: Only commas exist
@@ -103,10 +89,7 @@ export function normalizePrice(priceValue) {
   }
 
   // Replace decimal separator with a dot for parseFloat
-  // If no decimal separator was determined, remove stray dots (e.g. "Rp.62,000" -> ".62,000" -> "62000")
-  if (!decimalSeparator) {
-    cleaned = cleaned.replace(/\./g, '');
-  } else {
+  if (decimalSeparator) {
     cleaned = cleaned.replace(decimalSeparator, '.');
   }
 
@@ -120,7 +103,39 @@ export function normalizeYear(dateValue) {
   return match ? Number.parseInt(match[0], 10) : null;
 }
 
+// Pembersihan RINGAN & AMAN untuk teks judul yang diambil dari elemen
+// halaman asli (H1, data-testid, JSON-LD "name", itemprop="name", dst).
+// SENGAJA TIDAK memotong di karakter -, /, :, | dsb, karena judul buku
+// asli sering memang mengandung karakter itu sebagai bagian dari judul
+// (contoh nyata yang pernah salah kepotong sebelum fix ini:
+//  "Seri Pemikiran - Si Bijaksana Konfusius" -> jangan sampai jadi
+//  "Seri Pemikiran"; "Prinsip 80/20: Hukum Pareto..." -> jangan sampai
+//  jadi "Prinsip 80"). Cuma buang prefix aksi jualan & kata promo yang
+//  memang selalu berupa kata/frasa spesifik, bukan pemotongan di simbol.
 export function cleanTitle(titleValue) {
+  if (!titleValue) return '';
+
+  let cleaned = String(titleValue).trim();
+  if (!cleaned) return '';
+
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/^(jual|beli|pesan|order)\s+/i, '');
+  cleaned = cleaned.replace(/\b(promo|diskon|terbaru|terlaris|best seller)\b/gi, '');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  return cleaned;
+}
+
+// Khusus untuk STRING JUDUL HALAMAN MENTAH (document.title / meta
+// og:title / twitter:title) yang memang lazim berformat
+// "Judul Produk | Nama Toko" atau "Judul Produk - Toko Buku Online
+// Terbesar". DI SINI AMAN memotong di pemisah karena konteksnya beda:
+// ini bukan judul asli dari halaman produk, tapi title tag/meta yang
+// situsnya sendiri yang menambahkan suffix nama toko.
+//
+// JANGAN pakai fungsi ini untuk teks dari elemen H1/data-testid/JSON-LD
+// -- pakai cleanTitle() biasa untuk itu.
+export function stripSiteSuffixFromPageTitle(titleValue) {
   if (!titleValue) return '';
 
   let cleaned = String(titleValue).trim();
@@ -146,6 +161,13 @@ export function cleanTitle(titleValue) {
   cleaned = cleaned.replace(leadActionRegex, '');
   cleaned = cleaned.replace(/\b(promo|diskon|terbaru|terlaris|best seller)\b/gi, '');
   cleaned = cleaned.replace(siteRegex, '');
+  // Bersihkan simbol pemisah yang nyangkut di ujung -- terjadi saat kedua
+  // bagian hasil split gagal lolos filter (contoh: "Jual X | NamaToko",
+  // di mana bagian pertama diawali kata jualan dan bagian kedua nama
+  // toko, jadi kode di atas jatuh balik ke string utuh yang belum
+  // ke-split, menyisakan karakter "|" di ujung setelah kata-kata itu
+  // dibuang satu per satu).
+  cleaned = cleaned.replace(/^[\s|/\-–—]+|[\s|/\-–—]+$/g, '');
   cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
 
   return cleaned;
